@@ -77,6 +77,12 @@ func read(RAM *[0xffff]uint8, addr uint16) uint8 {
 }
 
 func main() {
+	RAM := [0xffff]uint8{
+		0x0000: 0xad,
+		0x0001: 0x34,
+		0x0002: 0x12,
+		0x1234: 0x42,
+	}
 
 	nes := Nes{
 		cpu: Cpu{},
@@ -84,7 +90,8 @@ func main() {
 			write: write,
 			read:  read,
 		},
-		RAM: [0xffff]uint8{0xad, 0x12, 0x34, 0x42}}
+		RAM: RAM,
+	}
 
 	ticker := time.NewTicker(1000 * time.Millisecond)
 
@@ -102,23 +109,20 @@ func main() {
 var cycles uint8 = 0
 
 func clock(nes *Nes) {
-	fmt.Printf("Address: $%04X Data: $%02X \n", nes.cpu.pc, read(&nes.RAM, nes.cpu.pc))
 
-	opcode := read(&nes.RAM, nes.cpu.pc) // a5 lda
+	fmt.Printf("Address: $%04X Data: $%02X A: $%02X \n", nes.cpu.pc, nes.RAM[nes.cpu.pc], nes.cpu.a)
+	// 0x0001 0xad
+	isOpcoding := false
 
-	lookup[opcode].addr_mode(nes)
+	if !isOpcoding {
 
-	lookup[opcode].operate(nes)
+		opcode := read(&nes.RAM, nes.cpu.pc) // a5 lda
+		nes.cpu.pc++
 
-	nes.cpu.pc++
+		lookup[opcode].addr_mode(nes)
 
-	if cycles == 0 {
-
-		cycles = 4
-
+		lookup[opcode].operate(nes)
 	}
-
-	cycles--
 }
 
 // Addr Modes
@@ -128,19 +132,22 @@ func IMM(nes *Nes) {
 }
 
 func LDA(nes *Nes) {
-
-	nes.cpu.a = read(&nes.RAM, nes.cpu.addr)
-
+	println("nes.cpu.pc in hex", fmt.Sprintf("%04X", nes.cpu.pc))
+	nes.cpu.a = read(&nes.RAM, nes.cpu.pc)
 }
 
 func ABS(nes *Nes) {
+
+	// 0x0001 0x34
 	lo := read(&nes.RAM, nes.cpu.pc)
 	nes.cpu.pc++
 
+	// 0x0002 0x12
 	hi := read(&nes.RAM, nes.cpu.pc)
 	nes.cpu.pc++
 
 	nes.cpu.addr = uint16(lo) | (uint16(hi) << 8)
+	// 0x1234
 	nes.cpu.pc = nes.cpu.addr
 }
 
