@@ -23,16 +23,12 @@ type Nes struct {
 }
 
 func clock(nes *Nes) {
-
-	if nes.cpu.cycles == 4 {
-		nes.cpu.opcode = read(nes, nes.cpu.PC)
-	}
-
 	if nes.cpu.cycles == 0 {
 
-		nes.cpu.PC++
 		nes.cpu.opcode = read(nes, nes.cpu.PC)
+		nes.cpu.PC++
 
+		nes.cpu.cycles = lookup[nes.cpu.opcode].cycles
 	}
 
 	lookup[nes.cpu.opcode].addr_mode(nes)
@@ -42,7 +38,6 @@ func clock(nes *Nes) {
 	}
 
 	if nes.cpu.cycles != 0 {
-
 		nes.cpu.cycles--
 	}
 
@@ -93,29 +88,32 @@ func ABS(nes *Nes) {
 
 	switch nes.cpu.cycles {
 	case 3:
-		nes.cpu.PC++
 		lo := read(nes, nes.cpu.PC)
+		nes.cpu.PC++
 		nes.cpu.addr_abs = uint16(lo)
 	case 2:
-
-		nes.cpu.PC++
 		hi := read(nes, nes.cpu.PC)
+		nes.cpu.PC++
 		nes.cpu.addr_abs |= uint16(hi) << 8
 	case 1:
 		nes.cpu.addressing = false
 	}
 }
 func main() {
+	RAM := [0xffff]uint8{}
+
+	for i := range RAM {
+		RAM[i] = 0xEA
+	}
+
+	RAM[0x0000] = 0xAD
+	RAM[0x0001] = 0x34
+	RAM[0x0002] = 0x12
+	RAM[0x1234] = 0x99
+
 	nes := Nes{
-		cpu: CPU{
-			cycles: 4,
-		},
-		RAM: [0xffff]uint8{
-			0x0000: 0xAD,
-			0x0001: 0x34,
-			0x0002: 0x12,
-			0x1234: 0x99,
-		},
+		cpu: CPU{},
+		RAM: RAM,
 	}
 
 	for i := 0; i < 12; i++ {
@@ -171,7 +169,8 @@ func JSR(nes *Nes) {}
 func LDX(nes *Nes) {}
 func LDY(nes *Nes) {}
 func LSR(nes *Nes) {}
-func NOP(nes *Nes) {}
+func NOP(nes *Nes) {
+}
 func ORA(nes *Nes) {}
 func PHA(nes *Nes) {}
 func PHP(nes *Nes) {}
