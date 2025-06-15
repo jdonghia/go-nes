@@ -5,38 +5,42 @@ import (
 	"time"
 )
 
+type CPU struct {
+	A          uint8
+	X          uint8
+	Y          uint8
+	PC         uint16
+	SP         uint16
+	cycles     uint8
+	addr_abs   uint16
+	addressing bool
+	opcode     uint8
+}
+
 type Nes struct {
-	cpu Cpu
-	bus Bus
+	cpu CPU
 	RAM [0xffff]uint8
 }
 
-type Bus struct {
-	write func(*Nes, uint8, uint16)
-	read  func(*[0xffff]uint8, uint16) uint8
-}
+func clock(nes *Nes) {
+	if nes.cpu.cycles == 0 {
 
-type Cpu struct {
-	pc     uint16
-	sp     uint16
-	a      uint8
-	x      uint8
-	y      uint8
-	cycles uint8
-	flags  Flags
-	byte   uint8
-	addr   uint16
-}
+		nes.cpu.opcode = read(nes, nes.cpu.PC)
+		nes.cpu.PC++
 
-type Flags struct {
-	C uint8
-	Z uint8
-	I uint8
-	D uint8
-	B uint8
-	U uint8
-	V uint8
-	N uint8
+		nes.cpu.cycles = lookup[nes.cpu.opcode].cycles
+	}
+
+	lookup[nes.cpu.opcode].addr_mode(nes)
+
+	if !nes.cpu.addressing {
+		lookup[nes.cpu.opcode].operate(nes)
+	}
+
+	if nes.cpu.cycles != 0 {
+		nes.cpu.cycles--
+	}
+
 }
 
 type Instruction struct {
@@ -65,92 +69,63 @@ var lookup = []Instruction{
 	{"BEQ", BEQ, REL, 2}, {"SBC", SBC, IZY, 5}, {"???", XXX, IMP, 2}, {"???", XXX, IMP, 8}, {"???", NOP, IMP, 4}, {"SBC", SBC, ZPX, 4}, {"INC", INC, ZPX, 6}, {"???", XXX, IMP, 6}, {"SED", SED, IMP, 2}, {"SBC", SBC, ABY, 4}, {"NOP", NOP, IMP, 2}, {"???", XXX, IMP, 7}, {"???", NOP, IMP, 4}, {"SBC", SBC, ABX, 4}, {"INC", INC, ABX, 7}, {"???", XXX, IMP, 7},
 }
 
-func init() {
+func read(nes *Nes, addr uint16) uint8 {
+	fmt.Printf("$%04X Data: $%02X A: $%02X \n", addr, nes.RAM[addr], nes.cpu.A)
+	return nes.RAM[addr]
 }
 
-func write(nes *Nes, byte uint8, addr uint16) {
-	nes.RAM[addr] = byte
-}
-
-func read(RAM *[0xffff]uint8, addr uint16) uint8 {
-	return RAM[addr]
-}
-
-func main() {
-	RAM := [0xffff]uint8{
-		0x0000: 0xad,
-		0x0001: 0x34,
-		0x0002: 0x12,
-		0x1234: 0x42,
-	}
-
-	nes := Nes{
-		cpu: Cpu{},
-		bus: Bus{
-			write: write,
-			read:  read,
-		},
-		RAM: RAM,
-	}
-
-	ticker := time.NewTicker(1000 * time.Millisecond)
-
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			clock(&nes)
-		}
-	}
-
-}
-
-var cycles uint8 = 0
-
-func clock(nes *Nes) {
-
-	fmt.Printf("Address: $%04X Data: $%02X A: $%02X \n", nes.cpu.pc, nes.RAM[nes.cpu.pc], nes.cpu.a)
-	// 0x0001 0xad
-	isOpcoding := false
-
-	if !isOpcoding {
-
-		opcode := read(&nes.RAM, nes.cpu.pc) // a5 lda
-		nes.cpu.pc++
-
-		lookup[opcode].addr_mode(nes)
-
-		lookup[opcode].operate(nes)
-	}
-}
-
-// Addr Modes
-func IMP(nes *Nes) {}
-func IMM(nes *Nes) {
-	nes.cpu.addr = nes.cpu.pc + 1
+func write(nes *Nes, addr uint16, data uint8) {
+	fmt.Printf("$%04X Data: $%02X A: $%02X \n", addr, data, nes.cpu.A)
+	nes.RAM[addr] = data
 }
 
 func LDA(nes *Nes) {
-	println("nes.cpu.pc in hex", fmt.Sprintf("%04X", nes.cpu.pc))
-	nes.cpu.a = read(&nes.RAM, nes.cpu.pc)
+	nes.cpu.A = read(nes, nes.cpu.addr_abs)
 }
 
 func ABS(nes *Nes) {
+	nes.cpu.addressing = true
 
-	// 0x0001 0x34
-	lo := read(&nes.RAM, nes.cpu.pc)
-	nes.cpu.pc++
+	switch nes.cpu.cycles {
+	case 3:
+		lo := read(nes, nes.cpu.PC)
+		nes.cpu.PC++
+		nes.cpu.addr_abs = uint16(lo)
+	case 2:
+		hi := read(nes, nes.cpu.PC)
+		nes.cpu.PC++
+		nes.cpu.addr_abs |= uint16(hi) << 8
+	case 1:
+		nes.cpu.addressing = false
+	}
+}
+func main() {
+	RAM := [0xffff]uint8{}
 
-	// 0x0002 0x12
-	hi := read(&nes.RAM, nes.cpu.pc)
-	nes.cpu.pc++
+	for i := range RAM {
+		RAM[i] = 0xEA
+	}
 
-	nes.cpu.addr = uint16(lo) | (uint16(hi) << 8)
-	// 0x1234
-	nes.cpu.pc = nes.cpu.addr
+	RAM[0x0000] = 0xAD
+	RAM[0x0001] = 0x34
+	RAM[0x0002] = 0x12
+	RAM[0x1234] = 0x99
+
+	nes := Nes{
+		cpu: CPU{},
+		RAM: RAM,
+	}
+
+	for i := 0; i < 12; i++ {
+		clock(&nes)
+		time.Sleep(1 * time.Second)
+
+	}
+
 }
 
+func IMM(nes *Nes) {}
+func IMP(nes *Nes) {}
 func ZP0(nes *Nes) {}
 func ZPX(nes *Nes) {}
 func ZPY(nes *Nes) {}
@@ -194,7 +169,8 @@ func JSR(nes *Nes) {}
 func LDX(nes *Nes) {}
 func LDY(nes *Nes) {}
 func LSR(nes *Nes) {}
-func NOP(nes *Nes) {}
+func NOP(nes *Nes) {
+}
 func ORA(nes *Nes) {}
 func PHA(nes *Nes) {}
 func PHP(nes *Nes) {}
